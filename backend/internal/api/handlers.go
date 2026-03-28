@@ -214,6 +214,32 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 	validatedPhone := phoneValidation.Normalized
 
 	userID, _ := middleware.GetUserIDFromContext(c)
+	username := middleware.GetUsernameFromContext(c)
+
+	if req.PatientConsent == nil || !*req.PatientConsent {
+		if h.DB != nil {
+			entry := models.AuditLog{
+				Username:  username,
+				Action:    "CONSENT_REJECTED POST /api/referrals",
+				TargetID:  "",
+				IPAddress: c.ClientIP(),
+				UserAgent: c.Request.UserAgent(),
+				Status:    http.StatusBadRequest,
+				Timestamp: time.Now(),
+			}
+			if userID != uuid.Nil {
+				entry.UserID = &userID
+			}
+			if err := h.DB.Create(&entry).Error; err != nil {
+				log.Printf("[AUDIT ERROR] Failed to log consent rejection: %v", err)
+			}
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Patient consent is required before creating a referral",
+		})
+		return
+	}
 
 	// Parse department UUID
 	deptID, err := uuid.Parse(req.DepartmentID)
@@ -276,6 +302,8 @@ func (h *HandlerContext) CreateReferral(c *gin.Context) {
 		PatientID:       patient.ID,
 		CreatorID:       userID,
 		CurrentDeptID:   deptID,
+		PatientConsent:  true,
+		ConsentTimestamp: time.Now().UTC(),
 		Status:          models.StatusPending,
 		Urgency:         req.Urgency,
 		Symptoms:        encryptedSymptoms,
@@ -514,6 +542,8 @@ func (h *HandlerContext) GetReferral(c *gin.Context) {
 		PatientName:     patientName,
 		PatientDOB:      referral.Patient.DateOfBirth.Format("2006-01-02"),
 		PatientPhone:    referral.Patient.PhoneNumber,
+		PatientConsent:  referral.PatientConsent,
+		ConsentTimestamp: referral.ConsentTimestamp,
 		CreatorUsername: referral.Creator.Username,
 		CreatorFacility: referral.Creator.FacilityName,
 		Department:      referral.Department.Name,

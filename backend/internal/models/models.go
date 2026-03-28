@@ -110,6 +110,8 @@ type Referral struct {
 	PatientID       uuid.UUID      `gorm:"type:uuid;not null;index" json:"patient_id"`
 	CreatorID       uuid.UUID      `gorm:"type:uuid;not null;index;index:idx_creator_status" json:"creator_id"`
 	CurrentDeptID   uuid.UUID      `gorm:"type:uuid;not null;index;index:idx_dept_status,priority:1;index:idx_dept_urgency,priority:1" json:"current_dept_id"`
+	PatientConsent  bool           `gorm:"not null;default:false" json:"patient_consent"`
+	ConsentTimestamp time.Time     `gorm:"not null;default:CURRENT_TIMESTAMP" json:"consent_timestamp"`
 	Status          ReferralStatus `gorm:"size:20;not null;default:'PENDING';index;index:idx_dept_status,priority:2;index:idx_creator_status,priority:2" json:"status"`
 	Urgency         UrgencyLevel   `gorm:"size:20;not null;default:'MEDIUM';index:idx_dept_urgency,priority:2" json:"urgency"`
 	Symptoms        string         `gorm:"type:text;not null" json:"symptoms"`          // ENCRYPTED

@@ -20,6 +20,7 @@ type CreateReferralRequest struct {
 	PatientName  string `json:"patient_name" binding:"required"`
 	PatientDOB   string `json:"patient_dob" binding:"required"`
 	PatientPhone string `json:"patient_phone" binding:"required"`
+	PatientConsent *bool `json:"patient_consent"`
 
 	// Referral info
 	DepartmentID string              `json:"department_id" binding:"required,uuid"`
@@ -98,6 +99,8 @@ type ReferralResponse struct {
 	PatientName     string                `json:"patient_name"`
 	PatientDOB      string                `json:"patient_dob"`
 	PatientPhone    string                `json:"patient_phone"`
+	PatientConsent  bool                  `json:"patient_consent"`
+	ConsentTimestamp time.Time            `json:"consent_timestamp"`
 	CreatorUsername string                `json:"creator_username"`
 	CreatorFacility string                `json:"creator_facility"`
 	Department      string                `json:"department"`

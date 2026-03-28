@@ -213,6 +213,15 @@ func main() {
 		// Combined History Route (Level 2 & CHU Doc read from same handler internally routing based on role)
 		authorized.GET("/history", h.GetReferralHistory)
 
+		// ── SIH Interoperability Routes (FHIR R4 Pull API) ─────────────
+		fhir := authorized.Group("/fhir/R4")
+		{
+			fhir.GET("/Patient/:id", h.GetFHIRPatient)
+			fhir.GET("/ServiceRequest/:id", h.GetFHIRServiceRequest)
+			fhir.GET("/Encounter/:id", h.GetFHIREncounter)
+			fhir.GET("/referrals/:id", h.GetFHIRReferralBundle)
+		}
+
 		// ── Admin Routes ─────────────────────────────────────
 		admin := authorized.Group("/admin")
 		admin.Use(middleware.RBACMiddleware(models.RoleSuperAdmin))

@@ -1,39 +1,60 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BrainCircuit, Send, AlertCircle, Building2, Image as ImageIcon, X, Phone } from 'lucide-react';
-import { getDirectory, suggestDepartment, createReferral, uploadAttachments, queueReferralForSync, syncQueuedReferrals } from '../../services/api';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  BrainCircuit,
+  Send,
+  AlertCircle,
+  Building2,
+  Image as ImageIcon,
+  X,
+  Phone,
+} from "lucide-react";
+import {
+  getDirectory,
+  suggestDepartment,
+  createReferral,
+  uploadAttachments,
+  queueReferralForSync,
+  syncQueuedReferrals,
+} from "../../services/api";
 
 // Country codes for phone validation
 const COUNTRY_CODES = [
-  { code: '+212', name: 'Maroc', flag: '🇲🇦' },
-  { code: '+33', name: 'France', flag: '🇫🇷' },
-  { code: '+34', name: 'Espagne', flag: '🇪🇸' },
-  { code: '+49', name: 'Allemagne', flag: '🇩🇪' },
-  { code: '+39', name: 'Italie', flag: '🇮🇹' },
-  { code: '+44', name: 'Royaume-Uni', flag: '🇬🇧' },
-  { code: '+1', name: 'USA/Canada', flag: '🇺🇸' },
-  { code: '+213', name: 'Algérie', flag: '🇩🇿' },
-  { code: '+216', name: 'Tunisie', flag: '🇹🇳' },
+  { code: "+212", name: "Maroc", flag: "🇲🇦" },
+  { code: "+33", name: "France", flag: "🇫🇷" },
+  { code: "+34", name: "Espagne", flag: "🇪🇸" },
+  { code: "+49", name: "Allemagne", flag: "🇩🇪" },
+  { code: "+39", name: "Italie", flag: "🇮🇹" },
+  { code: "+44", name: "Royaume-Uni", flag: "🇬🇧" },
+  { code: "+1", name: "USA/Canada", flag: "🇺🇸" },
+  { code: "+213", name: "Algérie", flag: "🇩🇿" },
+  { code: "+216", name: "Tunisie", flag: "🇹🇳" },
 ];
 
 // Phone validation function
 const validatePhoneNumber = (phone, countryCode) => {
   // Remove spaces and special characters
-  const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+  const cleanPhone = phone.replace(/[\s\-\(\)]/g, "");
 
   // Check if phone starts with the country code prefix
-  const codeWithoutPlus = countryCode.replace('+', '');
+  const codeWithoutPlus = countryCode.replace("+", "");
 
   // For Morocco (+212), validate local format
-  if (countryCode === '+212') {
+  if (countryCode === "+212") {
     // Can be: 06XXXXXXXX, 07XXXXXXXX, +2126XXXXXXXX, 2126XXXXXXXX
     const localMatch = cleanPhone.match(/^(0)?([67]\d{8})$/);
     const intlMatch = cleanPhone.match(/^(\+?212)?([67]\d{8})$/);
 
     if (localMatch || intlMatch) {
-      return { valid: true, normalized: `+212${localMatch ? localMatch[2] : intlMatch[2]}` };
+      return {
+        valid: true,
+        normalized: `+212${localMatch ? localMatch[2] : intlMatch[2]}`,
+      };
     }
-    return { valid: false, error: 'Numéro marocain invalide. Format: 06XX XXXXXX' };
+    return {
+      valid: false,
+      error: "Numéro marocain invalide. Format: 06XX XXXXXX",
+    };
   }
 
   // For other countries, just check minimum length
@@ -41,27 +62,28 @@ const validatePhoneNumber = (phone, countryCode) => {
     return { valid: true, normalized: `${countryCode}${cleanPhone}` };
   }
 
-  return { valid: false, error: 'Numéro de téléphone invalide' };
+  return { valid: false, error: "Numéro de téléphone invalide" };
 };
 
 export default function CreateReferral() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [departments, setDepartments] = useState([]);
-  const [phoneError, setPhoneError] = useState('');
-  const [selectedCountryCode, setSelectedCountryCode] = useState('+212');
+  const [phoneError, setPhoneError] = useState("");
+  const [selectedCountryCode, setSelectedCountryCode] = useState("+212");
 
   // Form State
   const [formData, setFormData] = useState({
-    patient_cin: '',
-    patient_name: '',
-    patient_dob: '',
-    patient_phone: '',
-    department_id: '',
-    symptoms: '',
-    urgency: 'MEDIUM',
-    ai_suggested_dept: null // Stores the exact AI string if accepted
+    patient_cin: "",
+    patient_name: "",
+    patient_dob: "",
+    patient_phone: "",
+    patient_consent: false,
+    department_id: "",
+    symptoms: "",
+    urgency: "MEDIUM",
+    ai_suggested_dept: null, // Stores the exact AI string if accepted
   });
 
   // AI State
@@ -76,57 +98,69 @@ export default function CreateReferral() {
       try {
         const data = await getDirectory();
         // Only allow referring to accepting departments
-        setDepartments(data.departments.filter(d => d.is_accepting));
+        setDepartments(data.departments.filter((d) => d.is_accepting));
       } catch (err) {
-        setError('Impossible de charger la liste des départements.');
+        setError("Impossible de charger la liste des départements.");
       }
     };
     fetchDepts();
   }, []);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
 
     // Clear phone error when user starts typing
-    if (name === 'patient_phone') {
-      setPhoneError('');
+    if (name === "patient_phone") {
+      setPhoneError("");
     }
 
-    setFormData({ ...formData, [name]: value });
+    setFormData({ ...formData, [name]: type === "checkbox" ? checked : value });
   };
 
   const handleCountryCodeChange = (e) => {
     setSelectedCountryCode(e.target.value);
-    setPhoneError('');
+    setPhoneError("");
   };
 
   const handlePhoneBlur = () => {
     if (!formData.patient_phone) return;
 
-    const validation = validatePhoneNumber(formData.patient_phone, selectedCountryCode);
+    const validation = validatePhoneNumber(
+      formData.patient_phone,
+      selectedCountryCode,
+    );
     if (!validation.valid) {
       setPhoneError(validation.error);
     }
   };
 
   const handleAISuggest = async () => {
-    if (!formData.symptoms || formData.symptoms.length < 10 || !formData.patient_dob) {
-      setError("Veuillez saisir la date de naissance et au moins 10 caractères de symptômes pour l'IA.");
+    if (
+      !formData.symptoms ||
+      formData.symptoms.length < 10 ||
+      !formData.patient_dob
+    ) {
+      setError(
+        "Veuillez saisir la date de naissance et au moins 10 caractères de symptômes pour l'IA.",
+      );
       return;
     }
 
     setAiLoading(true);
-    setError('');
+    setError("");
     setSuggestion(null);
 
     try {
       const resp = await suggestDepartment({
         symptoms: formData.symptoms,
-        patient_dob: formData.patient_dob
+        patient_dob: formData.patient_dob,
       });
       setSuggestion(resp);
     } catch (err) {
-      setError("Erreur lors de l'analyse IA: " + (err.response?.data?.error || err.message));
+      setError(
+        "Erreur lors de l'analyse IA: " +
+          (err.response?.data?.error || err.message),
+      );
     } finally {
       setAiLoading(false);
     }
@@ -136,8 +170,9 @@ export default function CreateReferral() {
     if (!suggestion) return;
 
     // Find matching department ID from the name
-    const match = departments.find(d =>
-      d.name.toLowerCase() === suggestion.suggested_department.toLowerCase()
+    const match = departments.find(
+      (d) =>
+        d.name.toLowerCase() === suggestion.suggested_department.toLowerCase(),
     );
 
     if (match) {
@@ -145,10 +180,12 @@ export default function CreateReferral() {
         ...formData,
         department_id: match.id,
         ai_suggested_dept: match.name,
-        urgency: suggestion.urgency || 'MEDIUM'
+        urgency: suggestion.urgency || "MEDIUM",
       });
     } else {
-      setError("Le CHU ne dispose pas de ce département ou il n'accepte pas de patients actuellement.");
+      setError(
+        "Le CHU ne dispose pas de ce département ou il n'accepte pas de patients actuellement.",
+      );
     }
   };
 
@@ -169,18 +206,27 @@ export default function CreateReferral() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     // Validate phone before submission
     if (!formData.patient_phone) {
-      setError('Le numéro de téléphone est requis');
+      setError("Le numéro de téléphone est requis");
       setLoading(false);
       return;
     }
 
-    const phoneValidation = validatePhoneNumber(formData.patient_phone, selectedCountryCode);
+    const phoneValidation = validatePhoneNumber(
+      formData.patient_phone,
+      selectedCountryCode,
+    );
     if (!phoneValidation.valid) {
       setPhoneError(phoneValidation.error);
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.patient_consent) {
+      setError("Le consentement explicite du patient est obligatoire avant transmission.");
       setLoading(false);
       return;
     }
@@ -188,21 +234,23 @@ export default function CreateReferral() {
     try {
       const payload = {
         ...formData,
-        patient_phone: phoneValidation.normalized
+        patient_phone: phoneValidation.normalized,
       };
 
       if (!navigator.onLine) {
         if (selectedFiles.length > 0) {
-          setError("Mode hors ligne: envoyez la référence sans pièces jointes, puis ajoutez les fichiers une fois la connexion rétablie.");
+          setError(
+            "Mode hors ligne: envoyez la référence sans pièces jointes, puis ajoutez les fichiers une fois la connexion rétablie.",
+          );
           setLoading(false);
           return;
         }
 
         const queueSize = await queueReferralForSync(payload);
-        navigate('/dashboard', {
+        navigate("/dashboard", {
           state: {
-            message: `Connexion indisponible. Référence chiffrée enregistrée localement (file d'attente: ${queueSize}). Elle sera transmise automatiquement dès le retour du réseau.`
-          }
+            message: `Connexion indisponible. Référence chiffrée enregistrée localement (file d'attente: ${queueSize}). Elle sera transmise automatiquement dès le retour du réseau.`,
+          },
         });
         return;
       }
@@ -216,27 +264,33 @@ export default function CreateReferral() {
 
       await syncQueuedReferrals();
 
-      navigate('/dashboard', { state: { message: 'Référence envoyée avec succès au CHU' } });
+      navigate("/dashboard", {
+        state: { message: "Référence envoyée avec succès au CHU" },
+      });
     } catch (err) {
       if (!err.response) {
         try {
           const queueSize = await queueReferralForSync({
             ...formData,
-            patient_phone: phoneValidation.normalized
+            patient_phone: phoneValidation.normalized,
           });
-          navigate('/dashboard', {
+          navigate("/dashboard", {
             state: {
-              message: `Erreur réseau détectée. Référence sauvegardée localement (file d'attente: ${queueSize}) et synchronisation automatique activée.`
-            }
+              message: `Erreur réseau détectée. Référence sauvegardée localement (file d'attente: ${queueSize}) et synchronisation automatique activée.`,
+            },
           });
           return;
         } catch {
-          setError("Erreur réseau et échec de la sauvegarde locale. Veuillez réessayer.");
+          setError(
+            "Erreur réseau et échec de la sauvegarde locale. Veuillez réessayer.",
+          );
           return;
         }
       }
 
-      setError(err.response?.data?.error || "Erreur lors de l'envoi de la référence.");
+      setError(
+        err.response?.data?.error || "Erreur lors de l'envoi de la référence.",
+      );
     } finally {
       setLoading(false);
     }
@@ -245,8 +299,13 @@ export default function CreateReferral() {
   return (
     <div className="max-w-3xl mx-auto pb-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Nouvelle Référence CHU</h1>
-        <p className="text-gray-500 text-sm mt-1">Dossier confidentiel. Les données personnelles seront chiffrées (AES-256).</p>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Nouvelle Référence CHU
+        </h1>
+        <p className="text-gray-500 text-sm mt-1">
+          Dossier confidentiel. Les données personnelles seront chiffrées
+          (AES-256).
+        </p>
       </div>
 
       {error && (
@@ -257,16 +316,19 @@ export default function CreateReferral() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
-
         {/* Patient Information Box */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold text-gray-900">Identité du Patient</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              Identité du Patient
+            </h2>
           </div>
 
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">N° CIN / Passeport</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                N° CIN / Passeport
+              </label>
               <input
                 type="text"
                 name="patient_cin"
@@ -279,7 +341,9 @@ export default function CreateReferral() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nom Complet (Identique CIN)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Nom Complet (Identique CIN)
+              </label>
               <input
                 type="text"
                 name="patient_name"
@@ -291,7 +355,9 @@ export default function CreateReferral() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Date de Naissance</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Date de Naissance
+              </label>
               <input
                 type="date"
                 name="patient_dob"
@@ -326,15 +392,20 @@ export default function CreateReferral() {
                   value={formData.patient_phone}
                   onChange={handleChange}
                   onBlur={handlePhoneBlur}
-                  className={`flex-1 border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${phoneError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder={selectedCountryCode === '+212' ? '06 61 00 00 00' : '6 12 34 56 78'}
+                  className={`flex-1 border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${phoneError ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+                  placeholder={
+                    selectedCountryCode === "+212"
+                      ? "06 61 00 00 00"
+                      : "6 12 34 56 78"
+                  }
                 />
               </div>
               {phoneError && (
                 <p className="mt-1 text-sm text-red-600">{phoneError}</p>
               )}
               <p className="mt-1 text-xs text-gray-500">
-                Format Maroc: 06XX XXXXXX | Format international: +212 6XX XXXXXX
+                Format Maroc: 06XX XXXXXX | Format international: +212 6XX
+                XXXXXX
               </p>
             </div>
           </div>
@@ -343,7 +414,9 @@ export default function CreateReferral() {
         {/* Clinical Info Box */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="bg-brand-50 px-6 py-4 border-b border-brand-100 flex justify-between items-center flex-wrap gap-4">
-            <h2 className="text-lg font-bold text-gray-900">Bilan Clinique & Triage</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              Bilan Clinique & Triage
+            </h2>
 
             <button
               type="button"
@@ -365,7 +438,9 @@ export default function CreateReferral() {
             <div className="bg-blue-50 p-4 border-b border-blue-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-bold text-blue-900">Recommandation IA :</span>
+                  <span className="text-sm font-bold text-blue-900">
+                    Recommandation IA :
+                  </span>
                   <span className="px-2 py-0.5 bg-blue-200 text-blue-800 text-xs font-bold rounded">
                     {suggestion.suggested_department}
                   </span>
@@ -378,7 +453,9 @@ export default function CreateReferral() {
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-blue-800 italic">{suggestion.reasoning}</p>
+                <p className="text-sm text-blue-800 italic">
+                  {suggestion.reasoning}
+                </p>
               </div>
               <button
                 type="button"
@@ -392,7 +469,9 @@ export default function CreateReferral() {
 
           <div className="p-6 space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Symptômes & Motif (Détaillé)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Symptômes & Motif (Détaillé)
+              </label>
               <textarea
                 name="symptoms"
                 required
@@ -415,17 +494,21 @@ export default function CreateReferral() {
                   required
                   value={formData.department_id}
                   onChange={handleChange}
-                  className={`w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${formData.ai_suggested_dept ? 'bg-blue-50 border-blue-300' : ''}`}
+                  className={`w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 ${formData.ai_suggested_dept ? "bg-blue-50 border-blue-300" : ""}`}
                 >
                   <option value="">Sélectionner un service...</option>
-                  {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  {departments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Niveau d'Urgence</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Niveau d'Urgence
+                </label>
                 <select
                   name="urgency"
                   required
@@ -433,10 +516,18 @@ export default function CreateReferral() {
                   onChange={handleChange}
                   className="w-full border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 font-medium"
                 >
-                  <option value="LOW" className="text-green-700">Faible (LOW)</option>
-                  <option value="MEDIUM" className="text-yellow-700">Moyen (MEDIUM)</option>
-                  <option value="HIGH" className="text-orange-700">Élevé (HIGH)</option>
-                  <option value="CRITICAL" className="text-red-700">Critique (CRITICAL)</option>
+                  <option value="LOW" className="text-green-700">
+                    Faible (LOW)
+                  </option>
+                  <option value="MEDIUM" className="text-yellow-700">
+                    Moyen (MEDIUM)
+                  </option>
+                  <option value="HIGH" className="text-orange-700">
+                    Élevé (HIGH)
+                  </option>
+                  <option value="CRITICAL" className="text-red-700">
+                    Critique (CRITICAL)
+                  </option>
                 </select>
               </div>
             </div>
@@ -450,9 +541,14 @@ export default function CreateReferral() {
 
               <div className="flex flex-wrap gap-4">
                 {selectedFiles.map((file, idx) => (
-                  <div key={idx} className="relative w-24 h-24 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center p-2 group overflow-hidden">
+                  <div
+                    key={idx}
+                    className="relative w-24 h-24 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center p-2 group overflow-hidden"
+                  >
                     <div className="text-[10px] text-gray-500 font-bold break-all text-center">
-                      {file.name.length > 20 ? file.name.substring(0, 15) + '...' : file.name}
+                      {file.name.length > 20
+                        ? file.name.substring(0, 15) + "..."
+                        : file.name}
                     </div>
                     <button
                       type="button"
@@ -478,7 +574,27 @@ export default function CreateReferral() {
                   </label>
                 )}
               </div>
-              <p className="text-[10px] text-gray-400 mt-3 font-medium uppercase tracking-wider">Formats acceptés: JPG, PNG, PDF • Max 5 fichiers</p>
+              <p className="text-[10px] text-gray-400 mt-3 font-medium uppercase tracking-wider">
+                Formats acceptés: JPG, PNG, PDF • Max 5 fichiers
+              </p>
+            </div>
+
+            <div className="pt-6 border-t border-gray-100">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="patient_consent"
+                  checked={formData.patient_consent}
+                  onChange={handleChange}
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="text-sm text-gray-700">
+                  I confirm that I have obtained the patient's consent for processing and transferring this medical data.
+                </span>
+              </label>
+              <p className="mt-2 text-xs text-gray-500">
+                CNDP (Loi 09-08): this confirmation is mandatory to create a referral.
+              </p>
             </div>
           </div>
         </div>
@@ -486,7 +602,7 @@ export default function CreateReferral() {
         <div className="pt-4 flex items-center justify-end gap-4 border-t border-gray-200">
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate("/dashboard")}
             className="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Annuler
