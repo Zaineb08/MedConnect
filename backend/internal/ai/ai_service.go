@@ -4,9 +4,11 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -21,11 +23,27 @@ type Service struct {
 
 // NewService creates a new AI service connected to the local Ollama.
 func NewService(ollamaURL, model string) *Service {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       200,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 25 * time.Second,
+	}
+
 	return &Service{
 		ollamaURL: strings.TrimRight(ollamaURL, "/"),
 		model:     model,
 		httpClient: &http.Client{
-			Timeout: 600 * time.Second, // 10 minutes (Local LLM load/inference can take long on first boot)
+			Transport: transport,
+			Timeout:   45 * time.Second,
 		},
 	}
 }
@@ -144,6 +162,38 @@ Generate ONLY the message, no additional commentary.`, patientName, deptName, da
 	return strings.TrimSpace(response), nil
 }
 
+// GenerateSurvivalChecklist creates a bilingual (Darija + French) practical
+// checklist sent to patients before departing for CHU.
+func (s *Service) GenerateSurvivalChecklist(symptoms string, dept string) (string, error) {
+	prompt := fmt.Sprintf(`Tu es assistant de préparation patient au CHU Mohammed VI d'Oujda.
+Ta mission: générer une "Checklist de Survie" personnalisée avant départ vers le CHU.
+
+CONTEXTE:
+- Département cible: %s
+- Symptômes: %s
+
+RÈGLES STRICTES:
+1) Répondre dans cet ordre:
+   - Partie 1: Darija marocaine (écriture arabe)
+   - Partie 2: Français
+2) Chaque partie doit contenir une checklist claire avec cases visuelles (✅ ou ☐) couvrant:
+   - Documents administratifs à apporter
+   - Examens / bilans médicaux à apporter selon symptômes et service
+   - Préparation avant départ (jeûne si nécessaire, médicaments, accompagnant, heure d'arrivée)
+3) Le ton doit être concret, rassurant, orienté action.
+4) Pas de markdown, pas de JSON, pas d'introduction inutile.
+5) Longueur maximale: 220 mots.
+
+Génère uniquement le message final prêt pour WhatsApp.`, dept, symptoms)
+
+	response, err := s.generate(prompt)
+	if err != nil {
+		return "", fmt.Errorf("ai: survival checklist generation failed: %w", err)
+	}
+
+	return strings.TrimSpace(response), nil
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 3. Executive Summarization
 // ──────────────────────────────────────────────────────────────────────
@@ -175,6 +225,9 @@ Respond with ONLY the 3 lines, no headers or extra text. Write in French (medica
 // ──────────────────────────────────────────────────────────────────────
 
 func (s *Service) generate(prompt string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+
 	reqBody := ollamaRequest{
 		Model:  s.model,
 		Prompt: prompt,
@@ -186,11 +239,13 @@ func (s *Service) generate(prompt string) (string, error) {
 		return "", fmt.Errorf("ai: failed to marshal request: %w", err)
 	}
 
-	resp, err := s.httpClient.Post(
-		s.ollamaURL+"/api/generate",
-		"application/json",
-		bytes.NewBuffer(jsonBody),
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.ollamaURL+"/api/generate", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("ai: failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("ai: failed to connect to Ollama at %s: %w", s.ollamaURL, err)
 	}

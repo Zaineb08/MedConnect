@@ -23,6 +23,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: medconnect_ai
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3:8b-instruct-q4_K_M}
     ports:
       - "11434:11434"
     volumes:
@@ -38,6 +40,20 @@ services:
     #           capabilities: [gpu]
 
     # ─── Evolution API v1 (WhatsApp Gateway) ───
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: medconnect_ai_init
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3:8b-instruct-q4_K_M}
+    entrypoint: ["/bin/sh", "-c", "sleep 5; ollama pull ${OLLAMA_MODEL}"]
+    restart: "no"
+    networks:
+      - medconnect-network
+
   evolution-api:
     image: atendai/evolution-api:v1.6.0
     container_name: medconnect_evolution_api
@@ -70,6 +86,7 @@ services:
       - AES_ENCRYPTION_KEY=${AES_KEY}
       - JWT_SECRET=${JWT_SECRET:-medconnect-jwt-secret-2026}
       - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3:8b-instruct-q4_K_M}
       - SERVER_PORT=3000
       - WA_URL=http://evolution-api:8080
       - WA_TOKEN=${WA_TOKEN:-evolution-secret-key}
@@ -81,6 +98,8 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
       evolution-api:
         condition: service_started
     restart: unless-stopped

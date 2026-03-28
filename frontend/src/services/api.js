@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getCached, setCached, invalidateCache } from './cache';
+import { enqueueReferralPayload, flushQueuedReferrals, getQueuedReferralCount } from './offlineQueue';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -151,6 +152,45 @@ export const createReferral = async (payload) => {
   // Invalidate cache after creating referral
   invalidateCache('/analyst');
   return data;
+};
+
+export const queueReferralForSync = async (payload) => {
+  return enqueueReferralPayload(payload);
+};
+
+let syncInProgress = false;
+
+export const syncQueuedReferrals = async () => {
+  if (syncInProgress) return { sent: 0, failed: 0 };
+  if (!navigator.onLine) return { sent: 0, failed: 0 };
+
+  syncInProgress = true;
+  try {
+    const result = await flushQueuedReferrals(async (payload) => {
+      await createReferral(payload);
+    });
+    return result;
+  } finally {
+    syncInProgress = false;
+  }
+};
+
+export const initStoreAndForwardSync = () => {
+  window.addEventListener('online', () => {
+    syncQueuedReferrals().catch((error) => {
+      console.error('[OFFLINE SYNC] Online sync failed', error);
+    });
+  });
+
+  if (navigator.onLine) {
+    syncQueuedReferrals().catch((error) => {
+      console.error('[OFFLINE SYNC] Initial sync failed', error);
+    });
+  }
+};
+
+export const getOfflineReferralQueueCount = async () => {
+  return getQueuedReferralCount();
 };
 
 export const uploadAttachments = async (referralID, files) => {

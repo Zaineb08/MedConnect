@@ -61,9 +61,17 @@ set +a
 WA_URL=${WA_URL:-http://localhost:8080}
 WA_TOKEN=${WA_TOKEN:-evolution-secret-key}
 WA_INSTANCE=${WA_INSTANCE:-medconnect}
+OLLAMA_MODEL=${OLLAMA_MODEL:-llama3:8b-instruct-q4_K_M}
 
 echo "🐳 1/5 Starting Docker dependencies (Postgres, Ollama, Evolution API)..."
 docker-compose up -d postgres ollama evolution-api
+
+echo "🧠 Ensuring quantized Ollama model is available: $OLLAMA_MODEL"
+if docker exec medconnect_ai ollama pull "$OLLAMA_MODEL" > /dev/null 2>&1; then
+    echo "✅ Ollama model ready: $OLLAMA_MODEL"
+else
+    echo "⚠️  [WARNING] Failed to pre-pull model $OLLAMA_MODEL now. It may be pulled on first request."
+fi
 
 # Wait for database to be ready
 echo "⏳ Waiting for Database to be healthy..."

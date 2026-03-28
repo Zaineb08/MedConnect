@@ -818,6 +818,7 @@ func (h *HandlerContext) ScheduleReferral(c *gin.Context) {
 	go func(ref models.Referral, apptDate time.Time) {
 		// Decrypt patient data for the notification
 		patientName := h.decryptPatientField(ref.Patient.ID, "fullname", ref.Patient.FullName, "")
+		symptoms := h.decryptReferralField(ref.ID, ref.Patient.ID, "symptoms", ref.Symptoms, "")
 		if patientName == "" {
 			log.Printf("[WHATSAPP ERROR] Failed to decrypt patient name for referral %s", ref.ID)
 			return
@@ -829,8 +830,18 @@ func (h *HandlerContext) ScheduleReferral(c *gin.Context) {
 			username = "Dr."
 		}
 
-		// Send template-based WhatsApp notification to patient
+		// Send bilingual survival checklist + appointment notification to patient
 		if h.WhatsApp != nil {
+			checklist := ""
+			if h.AI != nil && symptoms != "" {
+				generatedChecklist, err := h.AI.GenerateSurvivalChecklist(symptoms, ref.Department.Name)
+				if err != nil {
+					log.Printf("[AI ERROR] Failed to generate survival checklist for referral %s: %v", ref.ID, err)
+				} else {
+					checklist = generatedChecklist
+				}
+			}
+
 			notificationData := service.AppointmentNotificationData{
 				PatientName:     patientName,
 				DepartmentName:  ref.Department.Name,
@@ -841,8 +852,14 @@ func (h *HandlerContext) ScheduleReferral(c *gin.Context) {
 				Instructions:    service.GetDefaultInstructions(ref.Department.Name),
 				Language:        service.LanguageFrench,
 			}
+			baseMessage := service.AppointmentScheduledTemplate(notificationData)
 
-			msgID, err := h.WhatsApp.SendAppointmentNotification(ref.Patient.PhoneNumber, notificationData)
+			fullMessage := baseMessage
+			if checklist != "" {
+				fullMessage = fmt.Sprintf("%s\n\n====================\n📋 Checklist de Survie\n====================\n%s", baseMessage, checklist)
+			}
+
+			msgID, err := h.WhatsApp.SendTextMessage(ref.Patient.PhoneNumber, fullMessage)
 			if err != nil {
 				log.Printf("[WHATSAPP ERROR] Failed to send appointment notification: %v", err)
 			} else {

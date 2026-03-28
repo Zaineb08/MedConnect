@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BrainCircuit, Send, AlertCircle, Building2, Image as ImageIcon, X, Phone } from 'lucide-react';
-import { getDirectory, suggestDepartment, createReferral, uploadAttachments } from '../../services/api';
+import { getDirectory, suggestDepartment, createReferral, uploadAttachments, queueReferralForSync, syncQueuedReferrals } from '../../services/api';
 
 // Country codes for phone validation
 const COUNTRY_CODES = [
@@ -191,6 +191,22 @@ export default function CreateReferral() {
         patient_phone: phoneValidation.normalized
       };
 
+      if (!navigator.onLine) {
+        if (selectedFiles.length > 0) {
+          setError("Mode hors ligne: envoyez la référence sans pièces jointes, puis ajoutez les fichiers une fois la connexion rétablie.");
+          setLoading(false);
+          return;
+        }
+
+        const queueSize = await queueReferralForSync(payload);
+        navigate('/dashboard', {
+          state: {
+            message: `Connexion indisponible. Référence chiffrée enregistrée localement (file d'attente: ${queueSize}). Elle sera transmise automatiquement dès le retour du réseau.`
+          }
+        });
+        return;
+      }
+
       const resp = await createReferral(payload);
 
       // Upload attachments if any
@@ -198,8 +214,28 @@ export default function CreateReferral() {
         await uploadAttachments(resp.referral_id, selectedFiles);
       }
 
+      await syncQueuedReferrals();
+
       navigate('/dashboard', { state: { message: 'Référence envoyée avec succès au CHU' } });
     } catch (err) {
+      if (!err.response) {
+        try {
+          const queueSize = await queueReferralForSync({
+            ...formData,
+            patient_phone: phoneValidation.normalized
+          });
+          navigate('/dashboard', {
+            state: {
+              message: `Erreur réseau détectée. Référence sauvegardée localement (file d'attente: ${queueSize}) et synchronisation automatique activée.`
+            }
+          });
+          return;
+        } catch {
+          setError("Erreur réseau et échec de la sauvegarde locale. Veuillez réessayer.");
+          return;
+        }
+      }
+
       setError(err.response?.data?.error || "Erreur lors de l'envoi de la référence.");
     } finally {
       setLoading(false);

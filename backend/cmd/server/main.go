@@ -35,7 +35,7 @@ func main() {
 	jwtSecret := getEnv("JWT_SECRET", "")
 	serverPort := getEnv("SERVER_PORT", "3000")
 	ollamaURL := getEnv("OLLAMA_URL", "http://localhost:11434")
-	ollamaModel := getEnv("OLLAMA_MODEL", "llama3")
+	ollamaModel := getEnv("OLLAMA_MODEL", "llama3:8b-instruct-q4_K_M")
 	waURL := getEnv("WA_URL", "http://localhost:8080")
 	waToken := getEnv("WA_TOKEN", "")
 	waInstance := getEnv("WA_INSTANCE", "medconnect")
